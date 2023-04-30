@@ -21,6 +21,7 @@ class MessageType(Enum):
     RESULTS_ACK = auto()
     TASK_CANCEL = auto()
     BAD_COMMAND = auto()
+    MANAGER_ENERGY_REPORT = auto()
 
     def pack(self):
         return MESSAGE_TYPE_FORMATTER.pack(self.value)
@@ -70,6 +71,8 @@ class Message(ABC):
             return TaskCancel.unpack(remaining)
         elif message_type is MessageType.BAD_COMMAND:
             return BadCommand.unpack(remaining)
+        elif message_type is MessageType.MANAGER_ENERGY_REPORT:
+            return ManagerEnergyReport.unpack(remaining)
 
         raise Exception(f"Unknown Message Type Code: {message_type}")
 
@@ -318,3 +321,41 @@ class BadCommand(Message):
 
     def pack(self):
         return self.type.pack() + self.reason.encode("ascii")
+
+class ManagerEnergyReport(Message):
+    """
+    Message to report energy from manager back to the interchange
+    """
+
+    type = MessageType.MANAGER_ENERGY_REPORT
+
+    def __init__(self, label, timestamp, duration, pkg, dram):
+        super().__init__()
+        self.label = label
+        self.timestamp = timestamp
+        self.duration = duration
+        self.pkg = pkg
+        self.dram = dram
+
+    @classmethod
+    def unpack(cls, msg):
+        jsonified = msg.decode("ascii")
+        measurement = json.loads(jsonified)
+        return cls(
+            measurement["label"],
+            measurement["timestamp"],
+            measurement["duration"],
+            measurement["pkg"],
+            measurement["dram"]
+        )
+
+    def pack(self):
+        measurement = {
+            "label": self.label,
+            "timestampe": self.timestamp,
+            "duration": self.duration,
+            "pkg": self.pkg,
+            "dram": self.dram
+        }
+        jsonified = json.dumps(measurement)
+        return self.type.pack() + jsonified.encode("ascii")

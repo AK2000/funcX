@@ -22,6 +22,7 @@ from globus_compute_endpoint.executors.high_throughput import interchange, zmq_p
 from globus_compute_endpoint.executors.high_throughput.mac_safe_queue import mpQueue
 from globus_compute_endpoint.executors.high_throughput.messages import (
     EPStatusReport,
+    ManagerEnergyReport,
     Heartbeat,
     HeartbeatReq,
     Task,
@@ -535,6 +536,13 @@ class HighThroughputExecutor(RepresentationMixin):
 
                 elif isinstance(msgs, EPStatusReport):
                     log.debug(f"Received EPStatusReport {msgs}")
+                    if self.passthrough:
+                        self.results_passthrough.put(
+                            {"task_id": None, "message": dill.dumps(msgs)}
+                        )
+                
+                elif isinstance(msgs, ManagerEnergyReport):
+                    log.debug(f"Recieved ManagerEnergyReport {msgs}")
                     if self.passthrough:
                         self.results_passthrough.put(
                             {"task_id": None, "message": dill.dumps(msgs)}

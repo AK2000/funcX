@@ -32,6 +32,7 @@ from globus_compute_endpoint.executors.high_throughput.container_sched import (
 from globus_compute_endpoint.executors.high_throughput.mac_safe_queue import mpQueue
 from globus_compute_endpoint.executors.high_throughput.messages import (
     ManagerStatusReport,
+    ManagerEnergyReport,
     Message,
     Task,
 )
@@ -39,6 +40,7 @@ from globus_compute_endpoint.executors.high_throughput.worker_map import WorkerM
 from globus_compute_endpoint.logging_config import ComputeLogger, setup_logging
 from globus_compute_sdk.serialize import ComputeSerializer
 from parsl.version import VERSION as PARSL_VERSION
+import pyRAPL
 
 RESULT_TAG = 10
 TASK_REQUEST_TAG = 11
@@ -101,6 +103,8 @@ class Manager:
         worker_max_idletime=60,
         # TODO : This should be 10ms
         poll_period=100,
+        monitor_energy_manager=True,
+        monitor_energy_task=False
     ):
         """
         Parameters
@@ -265,6 +269,13 @@ class Manager:
 
         self.task_done_counter = 0
         self.task_finalization_lock = threading.Lock()
+
+        self.monitor_energy_manager = monitor_energy_manager
+        self.monitor_energy_task = monitor_energy_task
+
+        if monitor_energy_manager:
+            pyRAPL.setup()
+            self.measure = pyRAPL.Measurement(f"funcx_manager_{self.uid}")
 
     def create_reg_message(self):
         """Creates a registration message to identify the worker to the interchange"""
@@ -677,6 +688,7 @@ class Manager:
             if self.task_status_deltas:
                 log.info("Clearing task deltas")
                 self.task_status_deltas.clear()
+        
 
     def push_results(self, kill_event, max_result_batch_size=1):
         """Listens on the pending_result_queue and sends out results via 0mq
@@ -725,6 +737,18 @@ class Manager:
                     self.result_outgoing.send_multipart(items)
                     items = []
 
+        if self.monitor_energy_manager:
+            self.measure.end()
+            msg = ManagerEnergyReport(
+                self.measure.results.label,
+                self.measure.results.timestamp,
+                self.measure.results.duration,
+                self.measure.results.pkg,
+                self.measure.results.dram,
+            )
+            self.result_outgoing.send_multipart([msg.pack()])
+            log.info(f"Sending energy report to interchange")
+
         log.critical("Exiting")
 
     def remove_worker_init(self, worker_type):
@@ -753,6 +777,9 @@ class Manager:
             Push tasks to available workers
             Forward results
         """
+
+        if self.monitor_energy_manager:
+            self.measure.begin()
 
         if self.worker_type and self.scheduler_mode == "hard":
             log.debug(
@@ -851,7 +878,12 @@ def cli_run():
     parser.add_argument(
         "--scheduler_mode",
         default="soft",
-        help=("Choose the mode of scheduler (hard, soft"),
+        help=("Choose the mode of scheduler (hard, soft)"),
+    )
+    parser.add_argument(
+        "--monitor-manager-energy",
+        action="store_true",
+        help="Monitor the total energy consumption of the monitor"
     )
     parser.add_argument(
         "-r",

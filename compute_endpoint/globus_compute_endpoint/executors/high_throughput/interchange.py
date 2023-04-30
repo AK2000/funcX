@@ -30,6 +30,8 @@ from globus_compute_endpoint.executors.high_throughput.interchange_task_dispatch
 from globus_compute_endpoint.executors.high_throughput.messages import (
     BadCommand,
     EPStatusReport,
+    ManagerStatusReport,
+    ManagerEnergyReport,
     Heartbeat,
     Message,
     MessageType,
@@ -927,27 +929,32 @@ class Interchange:
                     try:
                         log.debug("Trying to unpack")
                         manager_report = Message.unpack(b_messages[0])
-                        if manager_report.task_statuses:
-                            log.info(
-                                "Got manager status report: %s",
-                                manager_report.task_statuses,
+                        if isinstance(manager_report, ManagerStatusReport):
+                            if manager_report.task_statuses:
+                                log.info(
+                                    "Got manager status report: %s",
+                                    manager_report.task_statuses,
+                                )
+
+                                for tid, statuses in manager_report.task_statuses.items():
+                                    task_deltas_to_merge[tid].extend(statuses)
+
+                            self.task_outgoing.send_multipart(
+                                [manager, b"", PKL_HEARTBEAT_CODE]
                             )
+                            b_messages = b_messages[1:]
+                            mdata["last"] = time.time()
+                            self.container_switch_count[
+                                manager
+                            ] = manager_report.container_switch_count
+                            log.info(
+                                "Got container switch count: %s",
+                                self.container_switch_count,
+                            )
+                        elif isinstance(manager_report, ManagerEnergyReport):
+                            self.results_outgoing.send(dill.dumps(b_messages[0]))
+                            b_messages = b_messages[1:]
 
-                            for tid, statuses in manager_report.task_statuses.items():
-                                task_deltas_to_merge[tid].extend(statuses)
-
-                        self.task_outgoing.send_multipart(
-                            [manager, b"", PKL_HEARTBEAT_CODE]
-                        )
-                        b_messages = b_messages[1:]
-                        mdata["last"] = time.time()
-                        self.container_switch_count[
-                            manager
-                        ] = manager_report.container_switch_count
-                        log.info(
-                            "Got container switch count: %s",
-                            self.container_switch_count,
-                        )
                     except Exception:
                         pass
                     if len(b_messages):
