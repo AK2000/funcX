@@ -272,10 +272,11 @@ class Manager:
 
         self.monitor_energy_manager = monitor_energy_manager
         self.monitor_energy_task = monitor_energy_task
+        self.monitor_energy_interval_counter = 0
 
         if monitor_energy_manager:
             pyRAPL.setup()
-            self.measure = pyRAPL.Measurement(f"funcx_manager_{self.uid}")
+            self.measure = pyRAPL.Measurement(f"funcx_manager_{self.uid}_{self.monitor_energy_interval_counter}")
 
     def create_reg_message(self):
         """Creates a registration message to identify the worker to the interchange"""
@@ -688,6 +689,22 @@ class Manager:
             if self.task_status_deltas:
                 log.info("Clearing task deltas")
                 self.task_status_deltas.clear()
+
+            if self.monitor_energy_manager:
+                self.measure.end()
+                msg = ManagerEnergyReport(
+                    self.measure.results.label,
+                    self.measure.results.timestamp,
+                    self.measure.results.duration,
+                    self.measure.results.pkg,
+                    self.measure.results.dram,
+                )
+                self.monitor_energy_interval_counter += 1
+                self.measure = pyRAPL.Measurement(f"funcx_manager_{self.uid}_{self.monitor_energy_interval_counter}")
+                self.measure.begin()
+
+                self.pending_result_queue.put(msg)
+                log.info(f"Sending energy report to interchange")
         
 
     def push_results(self, kill_event, max_result_batch_size=1):
@@ -717,7 +734,7 @@ class Manager:
                 # (It would be better to use Task Messages eventually to make this more
                 #  uniform)
                 # TODO: use task messages, and don't have to prepend
-                if isinstance(r, ManagerStatusReport):
+                if isinstance(r, ManagerStatusReport) or isinstance(r, ManagerEnergyReport):
                     items.insert(0, r.pack())
                 else:
                     items.append(r)
@@ -736,18 +753,6 @@ class Manager:
                 if items:
                     self.result_outgoing.send_multipart(items)
                     items = []
-
-        if self.monitor_energy_manager:
-            self.measure.end()
-            msg = ManagerEnergyReport(
-                self.measure.results.label,
-                self.measure.results.timestamp,
-                self.measure.results.duration,
-                self.measure.results.pkg,
-                self.measure.results.dram,
-            )
-            self.result_outgoing.send_multipart([msg.pack()])
-            log.info(f"Sending energy report to interchange")
 
         log.critical("Exiting")
 

@@ -928,32 +928,37 @@ class Interchange:
                     # update message followed by 0 or more task results
                     try:
                         log.debug("Trying to unpack")
-                        manager_report = Message.unpack(b_messages[0])
-                        if isinstance(manager_report, ManagerStatusReport):
-                            if manager_report.task_statuses:
+                        for _ in range(2):
+                            manager_report = Message.unpack(b_messages[0])
+                            if isinstance(manager_report, ManagerStatusReport):
+                                if manager_report.task_statuses:
+                                    log.info(
+                                        "Got manager status report: %s",
+                                        manager_report.task_statuses,
+                                    )
+
+                                    for tid, statuses in manager_report.task_statuses.items():
+                                        task_deltas_to_merge[tid].extend(statuses)
+
+                                self.task_outgoing.send_multipart(
+                                    [manager, b"", PKL_HEARTBEAT_CODE]
+                                )
+                                b_messages = b_messages[1:]
+                                mdata["last"] = time.time()
+                                self.container_switch_count[
+                                    manager
+                                ] = manager_report.container_switch_count
                                 log.info(
-                                    "Got manager status report: %s",
-                                    manager_report.task_statuses,
+                                    "Got container switch count: %s",
+                                    self.container_switch_count,
                                 )
 
-                                for tid, statuses in manager_report.task_statuses.items():
-                                    task_deltas_to_merge[tid].extend(statuses)
-
-                            self.task_outgoing.send_multipart(
-                                [manager, b"", PKL_HEARTBEAT_CODE]
-                            )
-                            b_messages = b_messages[1:]
-                            mdata["last"] = time.time()
-                            self.container_switch_count[
-                                manager
-                            ] = manager_report.container_switch_count
-                            log.info(
-                                "Got container switch count: %s",
-                                self.container_switch_count,
-                            )
-                        elif isinstance(manager_report, ManagerEnergyReport):
-                            self.results_outgoing.send(dill.dumps(b_messages[0]))
-                            b_messages = b_messages[1:]
+                            elif isinstance(manager_report, ManagerEnergyReport):
+                                self.results_outgoing.send(dill.dumps(b_messages[0]))
+                                b_messages = b_messages[1:]
+                            
+                            else:
+                                break
 
                     except Exception:
                         pass
