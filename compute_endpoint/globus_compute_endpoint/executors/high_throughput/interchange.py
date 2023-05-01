@@ -960,7 +960,8 @@ class Interchange:
                             else:
                                 break
 
-                    except Exception:
+                    except Exception as e:
+                        log.info("Raised exception" + str(e))
                         pass
                     if len(b_messages):
                         log.info(f"Got {len(b_messages)} result items in batch")
