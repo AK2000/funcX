@@ -954,7 +954,7 @@ class Interchange:
                                 )
 
                             elif isinstance(manager_report, ManagerEnergyReport):
-                                self.results_outgoing.send(dill.dumps(b_messages[0]))
+                                self.results_outgoing.send(manager_report.pack())
                                 b_messages = b_messages[1:]
                             
                             else:

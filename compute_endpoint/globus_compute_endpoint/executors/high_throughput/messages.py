@@ -352,7 +352,7 @@ class ManagerEnergyReport(Message):
     def pack(self):
         measurement = {
             "label": self.label,
-            "timestampe": self.timestamp,
+            "timestamp": self.timestamp,
             "duration": self.duration,
             "pkg": self.pkg,
             "dram": self.dram

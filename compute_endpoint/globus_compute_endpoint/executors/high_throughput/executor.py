@@ -542,7 +542,7 @@ class HighThroughputExecutor(RepresentationMixin):
                         )
                 
                 elif isinstance(msgs, ManagerEnergyReport):
-                    log.debug(f"Recieved ManagerEnergyReport {msgs}")
+                    log.info(f"Recieved ManagerEnergyReport {msgs}")
                     if self.passthrough:
                         self.results_passthrough.put(
                             {"task_id": None, "message": dill.dumps(msgs)}

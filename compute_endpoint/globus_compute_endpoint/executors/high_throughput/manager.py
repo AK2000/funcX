@@ -693,11 +693,11 @@ class Manager:
             if self.monitor_energy_manager:
                 self.measure.end()
                 msg = ManagerEnergyReport(
-                    self.measure.results.label,
-                    self.measure.results.timestamp,
-                    self.measure.results.duration,
-                    self.measure.results.pkg,
-                    self.measure.results.dram,
+                    self.measure.result.label,
+                    self.measure.result.timestamp,
+                    self.measure.result.duration,
+                    self.measure.result.pkg,
+                    self.measure.result.dram,
                 )
                 self.monitor_energy_interval_counter += 1
                 self.measure = pyRAPL.Measurement(f"funcx_manager_{self.uid}_{self.monitor_energy_interval_counter}")
