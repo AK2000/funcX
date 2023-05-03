@@ -192,8 +192,17 @@ class Interchange:
              Default: False
         """
 
+
         self.logdir = logdir
         os.makedirs(self.logdir, exist_ok=True)
+
+        from globus_compute_endpoint.logging_config import setup_logging
+        setup_logging(
+            logfile=os.path.join(self.logdir, "interchange.log"),
+            debug=True,
+            console_enabled=False,
+        )
+
         log.info(f"Initializing Interchange process with Endpoint ID: {endpoint_id}")
 
         #
