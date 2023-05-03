@@ -543,11 +543,6 @@ class HighThroughputExecutor(RepresentationMixin):
                 
                 elif isinstance(msgs, ManagerEnergyReport):
                     log.info(f"Recieved ManagerEnergyReport {msgs}")
-                    if self.passthrough:
-                        self.results_passthrough.put(
-                            {"task_id": None, "message": dill.dumps(msgs)}
-                        )
-
                 else:
                     log.debug("Unpacking results")
                     for serialized_msg in msgs:
