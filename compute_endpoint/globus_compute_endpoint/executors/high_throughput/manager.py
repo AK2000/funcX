@@ -277,6 +277,7 @@ class Manager:
         if monitor_energy_manager:
             pyRAPL.setup()
             self.measure = pyRAPL.Measurement(f"funcx_manager_{self.uid}_{self.monitor_energy_interval_counter}")
+            self.energy_measurements = pyRAPL.outputs.CSVOutput(os.path.join(self.logdir, self.uid, "energy.csv"))
 
     def create_reg_message(self):
         """Creates a registration message to identify the worker to the interchange"""
@@ -699,6 +700,9 @@ class Manager:
                     self.measure.result.pkg,
                     self.measure.result.dram,
                 )
+                self.measure.export(self.energy_measurements)
+                self.energy_measurements.save()
+
                 self.monitor_energy_interval_counter += 1
                 self.measure = pyRAPL.Measurement(f"funcx_manager_{self.uid}_{self.monitor_energy_interval_counter}")
                 self.measure.begin()
