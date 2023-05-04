@@ -31,7 +31,7 @@ from globus_compute_endpoint.executors.high_throughput.messages import (
 from globus_compute_endpoint.logging_config import setup_logging
 from globus_compute_endpoint.strategies.simple import SimpleStrategy
 from globus_compute_sdk.serialize import ComputeSerializer
-from parsl.dataflow.error import ConfigurationError
+from parsl.dataflow.errors import ConfigurationError
 from parsl.executors.errors import BadMessage, ScalingFailed
 from parsl.providers import LocalProvider
 from parsl.utils import RepresentationMixin
