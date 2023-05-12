@@ -589,6 +589,10 @@ class Manager:
                             )
 
                             self.send_task_to_worker(task_type)
+            
+            if monitor_energy_manager:
+                # Record energy once every polling loop
+                self.measure.update()
 
     def poll_funcx_task_socket(self, test=False):
         try:
@@ -692,7 +696,7 @@ class Manager:
                 self.task_status_deltas.clear()
 
             if self.monitor_energy_manager:
-                self.measure.end()
+                self.measure.update()
                 msg = ManagerEnergyReport(
                     self.measure.result.label,
                     self.measure.result.timestamp,
@@ -702,10 +706,6 @@ class Manager:
                 )
                 self.measure.export(self.energy_measurements)
                 self.energy_measurements.save()
-
-                self.monitor_energy_interval_counter += 1
-                self.measure = pyRAPL.Measurement(f"funcx_manager_{self.uid}_{self.monitor_energy_interval_counter}")
-                self.measure.begin()
 
                 self.pending_result_queue.put(msg)
                 log.info(f"Sending energy report to interchange")
