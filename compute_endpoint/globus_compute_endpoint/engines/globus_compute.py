@@ -44,6 +44,7 @@ class GlobusComputeEngine(GlobusComputeEngineBase):
         endpoint_id: t.Optional[uuid.UUID] = None,
         run_dir: t.Optional[str] = None,
         results_passthrough: t.Optional[queue.Queue] = None,
+        run_id: t.Optional[str] = None,
         **kwargs,
     ):
         assert run_dir, "GCExecutor requires kwarg:run_dir at start"
@@ -59,10 +60,10 @@ class GlobusComputeEngine(GlobusComputeEngineBase):
         self.executor.run_id = run_id
 
         if self.monitoring:
-            executor.hub_address = self.hub_address
-            executor.hub_port = self.hub_port
-            executor.monitoring_hub_url = self.monitoring_hub_url
-            executor.resource_monitoring_interval = self.resource_monitoring_interval
+            self.executor.hub_address = self.hub_address
+            self.executor.hub_port = self.hub_port
+            self.executor.monitoring_hub_url = self.monitoring_hub_url
+            self.executor.resource_monitoring_interval = self.resource_monitoring_interval
 
         self.executor.start()
         self._status_report_thread.start()

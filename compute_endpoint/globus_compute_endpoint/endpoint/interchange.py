@@ -148,7 +148,7 @@ class EndpointInterchange:
             self.monitoring.logdir = self.logdir
             self.hub_address = self.monitoring.hub_address
             log.info("Starting monitoring hub")
-            self.hub_interchange_port = self.monitoring.start(self.run_id, self.logdir)
+            self.hub_interchange_port = self.monitoring.start(self.run_id, str(self.logdir))
             
             # Providing executor with monitoring information if it needs it
             self.executor.monitoring = True
