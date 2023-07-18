@@ -56,6 +56,14 @@ class GlobusComputeEngine(GlobusComputeEngineBase):
             # Only update the default queue in GCExecutorBase if
             # a queue is passed in
             self.results_passthrough = results_passthrough
+        self.executor.run_id = run_id
+
+        if self.monitoring:
+            executor.hub_address = self.hub_address
+            executor.hub_port = self.hub_port
+            executor.monitoring_hub_url = self.monitoring_hub_url
+            executor.resource_monitoring_interval = self.resource_monitoring_interval
+
         self.executor.start()
         self._status_report_thread.start()
 

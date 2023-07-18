@@ -89,6 +89,12 @@ class EngineModel(BaseConfigModel):
     class Config:
         validate_all = True
 
+class MonitoringHubModel(BaseConfigModel):
+    hub_address: t.Optional[t.Union[str, AddressModel]]
+    hub_port: t.Optional[int]
+    logging_endpoint: str = t.Union[str, AddressModel]
+    resource_monitoring_enabled: t.Optional[bool]
+    resource_monitoring_interval: t.Optional[float]
 
 class ConfigModel(BaseConfigModel):
     engine: EngineModel

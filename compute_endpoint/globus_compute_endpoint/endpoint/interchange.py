@@ -10,6 +10,7 @@ import signal
 import sys
 import threading
 import time
+from uuid import uuid4
 
 # multiprocessing.Event is a method, not a class
 # to annotate, we need the "real" class
@@ -135,12 +136,35 @@ class EndpointInterchange:
         self.executor: GlobusComputeEngineBase = self.config.executors[0]
         self._test_start = False
 
+        self.monitoring = self.config.monitoring_hub
+        self.hub_address = None
+        self.hub_interchange_port = None
+        self.run_id = str(uuid4())
+
     def start_engine(self):
         log.info("Starting Engine")
+
+        if self.monitoring:
+            self.monitoring.logdir = self.logdir
+            self.hub_address = self.monitoring.hub_address
+            log.info("Starting monitoring hub")
+            self.hub_interchange_port = self.monitoring.start(self.run_id, self.logdir)
+            
+            # Providing executor with monitoring information if it needs it
+            self.executor.monitoring = True
+            self.executor.hub_address = self.hub_address
+            self.executor.hub_port = self.hub_interchange_port
+            self.executor.monitoring_hub_url = self.monitoring.monitoring_hub_url
+            self.executor.resource_monitoring_interval = self.monitoring.resource_monitoring_interval
+        else:
+            self.executor.monitoring = False
+
+
         self.executor.start(
             results_passthrough=self.results_passthrough,
             endpoint_id=self.endpoint_id,
             run_dir=self.logdir,
+            run_id=self.run_id
         )
 
     def migrate_tasks_to_internal(
