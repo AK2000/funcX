@@ -228,6 +228,8 @@ class EndpointInterchange:
 
     def cleanup(self):
         self.executor.shutdown()
+        if self.monitoring:
+            self.monitoring.close()
 
     def handle_sigterm(self, sig_num, curr_stack_frame):
         log.warning("Received SIGTERM, setting termination flag.")
