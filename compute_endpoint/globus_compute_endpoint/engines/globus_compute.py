@@ -56,6 +56,7 @@ class GlobusComputeEngine(GlobusComputeEngineBase):
         self.endpoint_id = endpoint_id
         self.executor.provider.script_dir = os.path.join(self.run_dir, "submit_scripts")
         os.makedirs(self.executor.provider.script_dir, exist_ok=True)
+        self.executor.provider.channel.script_dir = os.path.join(self.run_dir, "submit_scripts")
         if results_passthrough:
             # Only update the default queue in GCExecutorBase if
             # a queue is passed in
