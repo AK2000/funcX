@@ -139,7 +139,10 @@ class EndpointInterchange:
         self.monitoring = self.config.monitoring_hub
         self.hub_address = None
         self.hub_interchange_port = None
-        self.run_id = str(uuid4())
+
+        # Add run id for monitoring
+        # Run id will be endpoint id so we can easily reconstruct all runs on this endpoint
+        self.run_id = str(endpoint_id)
 
     def start_engine(self):
         log.info("Starting Engine")
