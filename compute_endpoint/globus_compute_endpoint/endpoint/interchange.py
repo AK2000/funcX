@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import datetime
 import logging
 import multiprocessing
 import os
@@ -39,10 +40,12 @@ from globus_compute_endpoint.endpoint.rabbit_mq import (
 from globus_compute_endpoint.endpoint.result_store import ResultStore
 from globus_compute_endpoint.engines.base import GlobusComputeEngineBase
 from globus_compute_endpoint.exception_handling import get_result_error_details
-from globus_compute_endpoint.timingrecord import TimingRecord
+from globus_compute_endpoint.endpoint.timingrecord import TimingRecord
 from globus_compute_sdk import __version__ as funcx_sdk_version
+
 from parsl.version import VERSION as PARSL_VERSION
 from parsl.dataflow.states import States, FINAL_STATES, FINAL_FAILURE_STATES
+from parsl.monitoring.message_type import MessageType
 
 log = logging.getLogger(__name__)
 
@@ -180,7 +183,7 @@ class EndpointInterchange:
                 'run_id': self.run_id,
                 'workflow_name': self.workflow_name,
                 'workflow_version': self.workflow_version,
-                'rundir': self.run_dir,
+                'rundir': self.endpoint_dir,
                 'tasks_completed_count': 0,
                 'tasks_failed_count': 0,
                 'user': getuser(),
@@ -385,7 +388,7 @@ class EndpointInterchange:
         if self.monitoring:
             timing_record: TimingRecord
             timing_record = {
-                'time_invoked': datetime.datetime.now()
+                'time_invoked': datetime.datetime.now(),
                 'time_returned': None
             }
             with self.timing_record_lock:

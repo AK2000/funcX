@@ -15,6 +15,7 @@ from globus_compute_endpoint.engines.base import (
 )
 from globus_compute_endpoint.strategies import SimpleStrategy
 from parsl.executors.high_throughput.executor import HighThroughputExecutor
+from parsl.monitoring.message_type import MessageType
 
 logger = logging.getLogger(__name__)
 
@@ -54,6 +55,7 @@ class GlobusComputeEngine(GlobusComputeEngineBase):
         assert run_dir, "GCExecutor requires kwarg:run_dir at start"
         assert endpoint_id, "GCExecutor requires kwarg:endpoint_id at start"
         self.run_dir = os.path.join(os.getcwd(), run_dir)
+        self.executor.run_dir = self.run_dir
         self.endpoint_id = endpoint_id
         self.executor.provider.script_dir = os.path.join(self.run_dir, "submit_scripts")
         os.makedirs(self.executor.provider.script_dir, exist_ok=True)
