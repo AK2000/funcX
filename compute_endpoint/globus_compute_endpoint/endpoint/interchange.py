@@ -157,13 +157,14 @@ class EndpointInterchange:
             self.task_state_counts : dict[States, int] = defaultdict(int)
 
     def _init_monitoring(self):
-        self.monitoring.logdir = self.logdir
+        #self.monitoring.logdir = self.logdir
         self.hub_address = self.monitoring.hub_address
         log.info("Starting monitoring hub")
         self.hub_interchange_port = self.monitoring.start(self.run_id, str(self.logdir))
         
         # Providing executor with monitoring information if it needs it
         self.executor.monitoring = self.monitoring
+        self.executor.hub_port = self.hub_interchange_port
 
         self.workflow_name = f"{self.endpoint_id}"
         self.time_began = datetime.datetime.now()
@@ -266,19 +267,19 @@ class EndpointInterchange:
     def cleanup(self):
         self.executor.shutdown()
         if self.monitoring:
-            logger.info("Sending final monitoring message")
+            log.info("Sending final monitoring message")
             self.time_completed = datetime.datetime.now()
             self.monitoring.send(MessageType.WORKFLOW_INFO,
                                 {'tasks_failed_count': self.task_state_counts[States.failed],
                                 'tasks_completed_count': self.task_state_counts[States.exec_done],
                                 "time_began": self.time_began,
                                 'time_completed': self.time_completed,
-                                'run_id': self.run_id, 'rundir': self.run_dir,
+                                'run_id': self.run_id, 'rundir': self.endpoint_dir,
                                 'exit_now': True})
 
-            logger.info("Terminating monitoring")
+            log.info("Terminating monitoring")
             self.monitoring.close()
-            logger.info("Terminated monitoring")
+            log.info("Terminated monitoring")
 
     def handle_sigterm(self, sig_num, curr_stack_frame):
         log.warning("Received SIGTERM, setting termination flag.")
@@ -408,6 +409,7 @@ class EndpointInterchange:
 
     def _send_task_info(self, task_id, status, timing_record):
         task_log_info = self._create_task_log_info(task_id, status, timing_record)
+        log.debug(f"Sending messaege: {task_log_info} to monitoring")
         self.monitoring.send(MessageType.TASK_INFO, task_log_info)
 
     def _create_task_log_info(self, task_id, status, timing_record):
@@ -417,7 +419,7 @@ class EndpointInterchange:
         task_log_info["task_status"] = status
         task_log_info["try_time_launched"] = timing_record["time_invoked"]
         task_log_info["try_time_returned"] = timing_record["time_returned"]
-        task_log_info["executor"] = self.executor
+        task_log_info["executor"] = self.executor.label
         task_log_info['run_id'] = self.run_id
         task_log_info['try_id'] = 0
         task_log_info['timestamp'] = datetime.datetime.now()

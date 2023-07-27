@@ -68,7 +68,8 @@ class GlobusComputeEngine(GlobusComputeEngineBase):
 
         if self.monitoring:
             self.executor.hub_address = self.monitoring.hub_address
-            self.executor.hub_port = self.monitoring.hub_port
+            self.executor.hub_port = self.hub_port
+            assert self.executor.hub_address and self.executor.hub_port, "Monitoring requires both hub address and port"
             self.executor.monitoring_hub_url = self.monitoring.monitoring_hub_url
             self.executor.resource_monitoring_interval = self.monitoring.resource_monitoring_interval
 
