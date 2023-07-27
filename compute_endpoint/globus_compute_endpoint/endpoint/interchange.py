@@ -163,11 +163,7 @@ class EndpointInterchange:
         self.hub_interchange_port = self.monitoring.start(self.run_id, str(self.logdir))
         
         # Providing executor with monitoring information if it needs it
-        self.executor.monitoring = True
-        self.executor.hub_address = self.hub_address
-        self.executor.hub_port = self.hub_interchange_port
-        self.executor.monitoring_hub_url = self.monitoring.monitoring_hub_url
-        self.executor.resource_monitoring_interval = self.monitoring.resource_monitoring_interval
+        self.executor.monitoring = self.monitoring
 
         self.workflow_name = f"{self.endpoint_id}"
         self.time_began = datetime.datetime.now()

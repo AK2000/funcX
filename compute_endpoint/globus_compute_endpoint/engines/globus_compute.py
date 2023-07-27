@@ -67,10 +67,10 @@ class GlobusComputeEngine(GlobusComputeEngineBase):
         self.executor.run_id = run_id
 
         if self.monitoring:
-            self.executor.hub_address = self.hub_address
-            self.executor.hub_port = self.hub_port
-            self.executor.monitoring_hub_url = self.monitoring_hub_url
-            self.executor.resource_monitoring_interval = self.resource_monitoring_interval
+            self.executor.hub_address = self.monitoring.hub_address
+            self.executor.hub_port = self.monitoring.hub_port
+            self.executor.monitoring_hub_url = self.monitoring.monitoring_hub_url
+            self.executor.resource_monitoring_interval = self.monitoring.resource_monitoring_interval
 
         self.executor.start()
         if self.strategy:
