@@ -73,6 +73,13 @@ class GlobusComputeEngine(GlobusComputeEngineBase):
         self.executor.start()
         if self.strategy:
             self.strategy.start(self)
+
+        if self.monitoring:
+            self._status = self.executor.status()
+            msg = self.executor.create_monitoring_info(self._status)
+            logger.debug("Sending message {} to hub from exeutor start".format(msg))
+            self.monitoring.send(MessageType.BLOCK_INFO, msg)
+
         self._status_report_thread.start()
 
     def _submit(
@@ -171,6 +178,22 @@ class GlobusComputeEngine(GlobusComputeEngineBase):
             },
         }
         task_status_deltas: t.Dict[str, t.List[TaskTransition]] = {}
+
+        # TODO: Move this to the base engine
+        if self.monitoring:
+            previous_status = self._status
+            self._status = self.executor.status()
+            delta_status = {}
+            for block_id in self._status:
+                if block_id not in previous_status \
+                   or previous_status[block_id].state != self._status[block_id].state:
+                    delta_status[block_id] = self._status[block_id]
+
+            if delta_status:
+                msg = self.executor.create_monitoring_info(delta_status)
+                logger.debug("Sending message {} to hub from job status poller".format(msg))
+                self.monitoring.send(MessageType.BLOCK_INFO, msg)
+
         return EPStatusReport(
             endpoint_id=self.endpoint_id,
             global_state=executor_status,
