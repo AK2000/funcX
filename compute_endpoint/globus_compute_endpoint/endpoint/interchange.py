@@ -407,21 +407,21 @@ class EndpointInterchange:
             self._send_task_info(task_id, States.launched, timing_record)
 
     def _send_task_info(self, task_id, status, timing_record):
-        task_log_info = self._create_task_log_info(task_record)
+        task_log_info = self._create_task_log_info(task_id, status, timing_record)
         self.monitoring.send(MessageType.TASK_INFO, task_log_info)
 
     def _create_task_log_info(self, task_id, status, timing_record):
+        task_log_info = {"task_" + k: timing_record[k] for k in ["time_invoked", "time_returned"]}
         task_log_info["task_id"] = task_id
         task_log_info["task_func_name"] = None # Not available at interchange
         task_log_info["task_status"] = status
-        task_log_info = {"task_" + k: timing_record_record[k] for k in ["time_invoked", "time_returned"]}
-        task_log_info["try_time_launched"] = task_record["time_invoked"]
-        task_log_info["try_time_returned"] = task_record["time_returned"]
+        task_log_info["try_time_launched"] = timing_record["time_invoked"]
+        task_log_info["try_time_returned"] = timing_record["time_returned"]
         task_log_info["executor"] = self.executor
         task_log_info['run_id'] = self.run_id
         task_log_info['try_id'] = 0
         task_log_info['timestamp'] = datetime.datetime.now()
-        task_log_info['task_status_name'] = task_record['status'].name
+        task_log_info['task_status_name'] = status.name
         task_log_info['tasks_failed_count'] = self.task_state_counts[States.failed]
         task_log_info['tasks_completed_count'] = self.task_state_counts[States.exec_done]
 
@@ -510,7 +510,7 @@ class EndpointInterchange:
                         log.exception("Unhandled error processing incoming task")
                         continue
 
-                    self._begin_task(task_msg, task_id)
+                    self._begin_task(task_msg.task_id)
 
                     try:
                         executor.submit(
