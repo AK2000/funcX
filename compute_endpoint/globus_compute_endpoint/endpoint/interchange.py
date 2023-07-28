@@ -180,7 +180,7 @@ class EndpointInterchange:
                 'run_id': self.run_id,
                 'workflow_name': self.workflow_name,
                 'workflow_version': self.workflow_version,
-                'rundir': self.endpoint_dir,
+                'rundir': str(self.endpoint_dir),
                 'tasks_completed_count': 0,
                 'tasks_failed_count': 0,
                 'user': getuser(),
@@ -274,7 +274,7 @@ class EndpointInterchange:
                                 'tasks_completed_count': self.task_state_counts[States.exec_done],
                                 "time_began": self.time_began,
                                 'time_completed': self.time_completed,
-                                'run_id': self.run_id, 'rundir': self.endpoint_dir,
+                                'run_id': self.run_id, 'rundir': str(self.endpoint_dir),
                                 'exit_now': True})
 
             log.info("Terminating monitoring")
@@ -414,12 +414,12 @@ class EndpointInterchange:
 
     def _create_task_log_info(self, task_id, status, timing_record):
         task_log_info = {"task_" + k: timing_record[k] for k in ["time_invoked", "time_returned"]}
-        task_log_info["task_id"] = task_id
+        task_log_info["task_id"] = str(task_id)
         task_log_info["task_func_name"] = None # Not available at interchange
         task_log_info["task_status"] = status
-        task_log_info["try_time_launched"] = timing_record["time_invoked"]
-        task_log_info["try_time_returned"] = timing_record["time_returned"]
-        task_log_info["executor"] = self.executor.label
+        task_log_info["task_try_time_launched"] = timing_record["time_invoked"]
+        task_log_info["task_try_time_returned"] = timing_record["time_returned"]
+        task_log_info["task_executor"] = self.executor.label
         task_log_info['run_id'] = self.run_id
         task_log_info['try_id'] = 0
         task_log_info['timestamp'] = datetime.datetime.now()
@@ -428,10 +428,10 @@ class EndpointInterchange:
         task_log_info['tasks_completed_count'] = self.task_state_counts[States.exec_done]
 
         # Fields not currently implemented in Globus Compute
-        task_log_info["memoize"] = False
-        task_log_info["hashsum"] = None
-        task_log_info["fail_count"] = 0 # TODO: Should this be 1 if the task failed?
-        task_log_info["fail_cost"] = 0
+        task_log_info["task_memoize"] = False
+        task_log_info["task_hashsum"] = None
+        task_log_info["task_fail_count"] = 0 # TODO: Should this be 1 if the task failed?
+        task_log_info["task_fail_cost"] = 0
         task_log_info['tasks_memo_completed_count'] = 0
         task_log_info['from_memo'] = False
         task_log_info['task_inputs'] = None
