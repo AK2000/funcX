@@ -27,6 +27,7 @@ from globus_compute_sdk.errors import TaskExecutionFailed
 from globus_compute_sdk.sdk.asynchronous.compute_future import ComputeFuture
 from globus_compute_sdk.sdk.client import Client
 from globus_compute_sdk.sdk.utils import chunk_by
+from globus_compute_sdk.sdk.monitoring import monitor_wrapper
 
 log = logging.getLogger(__name__)
 
@@ -129,6 +130,9 @@ class Executor(concurrent.futures.Executor):
         container_id: str | None = None,
         funcx_client: Client | None = None,
         task_group_id: str | None = None,
+        monitoring: bool = False,
+        monitor_resources: bool = False,
+        resource_monitoring_interval: float = 5,
         label: str = "",
         batch_size: int = 128,
         **kwargs,
@@ -188,6 +192,10 @@ class Executor(concurrent.futures.Executor):
         )
         self._task_submitter.start()
         _REGISTERED_FXEXECUTORS[id(self)] = self
+
+        self.monitoring = monitoring
+        self.monitor_resources = monitor_resources
+        self.resource_monitoring_interval = resource_monitoring_interval
 
     def __repr__(self) -> str:
         name = self.__class__.__name__
@@ -273,6 +281,10 @@ class Executor(concurrent.futures.Executor):
             return function_id
 
         log.debug("Function not registered. Registering: %s", fn)
+
+        if self.monitoring:
+            fn = monitor_wrapper(fn, self.monitor_resources, self.resource_monitoring_interval)
+
         func_register_kwargs.pop("function", None)  # just to be sure
         reg_kwargs = {"function_name": fn.__name__, "container_uuid": self.container_id}
         reg_kwargs.update(func_register_kwargs)
