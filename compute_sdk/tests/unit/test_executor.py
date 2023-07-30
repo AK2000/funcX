@@ -13,7 +13,8 @@ from globus_compute_common.messagepack.message_types import Result, ResultErrorD
 from globus_compute_sdk import Client, Executor
 from globus_compute_sdk.errors import TaskExecutionFailed
 from globus_compute_sdk.sdk.asynchronous.compute_future import ComputeFuture
-from globus_compute_sdk.sdk.executor import TaskSubmissionInfo, _ResultWatcher
+from globus_compute_sdk.sdk.executor import _ResultWatcher, _TaskSubmissionInfo
+from globus_compute_sdk.sdk.utils.uuid_like import as_optional_uuid, as_uuid
 from globus_compute_sdk.serialize.facade import ComputeSerializer
 from tests.utils import try_assert, try_for_timeout
 
@@ -72,7 +73,6 @@ class MockedResultWatcher(_ResultWatcher):
 @pytest.fixture
 def gc_executor(mocker):
     gcc = mock.MagicMock()
-    gcc.session_task_group_id = str(uuid.uuid4())
     gce = Executor(funcx_client=gcc)
     watcher = mocker.patch(f"{_MOCK_BASE}_ResultWatcher", autospec=True)
 
@@ -101,18 +101,18 @@ def gc_executor(mocker):
 
 def test_task_submission_info_stringification():
     fut_id = 10
-    func_id = "foo_func"
-    ep_id = "bar_ep"
+    func_id = uuid.uuid4()
+    ep_id = uuid.uuid4()
 
-    info = TaskSubmissionInfo(
+    info = _TaskSubmissionInfo(
         task_num=fut_id, function_id=func_id, endpoint_id=ep_id, args=(), kwargs={}
     )
     as_str = str(info)
-    assert as_str.startswith("TaskSubmissionInfo(")
-    assert as_str.endswith("args=..., kwargs=...)")
+    assert as_str.startswith("_TaskSubmissionInfo(")
+    assert as_str.endswith("args=[0], kwargs=[0])")
     assert "task_num=10" in as_str
-    assert "function_id='foo_func'" in as_str
-    assert "endpoint_id='bar_ep'" in as_str
+    assert f"function_uuid='{func_id}'" in as_str
+    assert f"endpoint_uuid='{ep_id}'" in as_str
 
 
 @pytest.mark.parametrize("argname", ("batch_interval", "batch_enabled"))
@@ -159,14 +159,6 @@ def test_executor_context_manager(gc_executor):
     assert _is_stopped(gce._result_watcher)
 
 
-def test_property_task_group_id_is_isolated(gc_executor):
-    gcc, gce = gc_executor
-    assert gce.task_group_id != gcc.session_task_group_id
-
-    gce.task_group_id = uuid.uuid4()
-    assert gce.task_group_id != gcc.session_task_group_id
-
-
 def test_multiple_register_function_fails(gc_executor):
     gcc, gce = gc_executor
 
@@ -209,6 +201,32 @@ def test_failed_registration_shuts_down_executor(gc_executor, randomstring):
     try_assert(lambda: gce._stopped)
 
 
+@pytest.mark.parametrize("container_id", (None, uuid.uuid4(), str(uuid.uuid4())))
+def test_container_id(gc_executor, container_id):
+    gcc, gce = gc_executor
+
+    assert gce.container_id is None, "Default value is None"
+    gce.container_id = container_id
+    if container_id is None:
+        assert gce.container_id is None
+    else:
+        expected_container_id = as_uuid(container_id)
+        assert gce.container_id == expected_container_id
+
+
+@pytest.mark.parametrize("container_id", (None, uuid.uuid4(), str(uuid.uuid4())))
+def test_register_function_sends_container_id(gc_executor, container_id):
+    gcc, gce = gc_executor
+
+    gce.container_id = container_id
+    gce.register_function(noop)
+    assert gcc.register_function.called
+    a, k = gcc.register_function.call_args
+
+    expected_container_id = as_optional_uuid(container_id)
+    assert k["container_uuid"] == expected_container_id
+
+
 def test_submit_raises_if_thread_stopped(gc_executor):
     gcc, gce = gc_executor
     gce.shutdown()
@@ -225,8 +243,8 @@ def test_submit_raises_if_thread_stopped(gc_executor):
 def test_submit_auto_registers_function(gc_executor):
     gcc, gce = gc_executor
 
-    gcc.register_function.return_value = "abc"
-    gce.endpoint_id = "some_ep_id"
+    gcc.register_function.return_value = uuid.uuid4()
+    gce.endpoint_id = uuid.uuid4()
     gce.submit(noop)
 
     assert gcc.register_function.called
@@ -263,12 +281,36 @@ def test_map_raises(gc_executor):
         gce.map(noop)
 
 
+def test_reload_tasks_requires_task_group_id(gc_executor):
+    _gcc, gce = gc_executor
+
+    with pytest.raises(Exception) as e:
+        gce.reload_tasks()
+
+    assert "must specify a task_group_id in order to reload tasks" in str(e.value)
+
+
+def test_reload_tasks_sets_passed_task_group_id(gc_executor):
+    gcc, gce = gc_executor
+
+    # for less mocking:
+    gcc.web_client.get_taskgroup_tasks.side_effect = RuntimeError("bailing out early")
+
+    tg_id = str(uuid.uuid4())
+    with pytest.raises(RuntimeError) as e:
+        gce.reload_tasks(tg_id)
+
+    assert "bailing out early" in str(e.value)
+    assert gce.task_group_id == tg_id
+
+
 @pytest.mark.parametrize("num_tasks", [0, 1, 2, 10])
 def test_reload_tasks_none_completed(gc_executor, mocker, num_tasks):
     gcc, gce = gc_executor
 
     mock_log = mocker.patch(f"{_MOCK_BASE}log")
 
+    gce.task_group_id = str(uuid.uuid4())
     mock_data = {
         "taskgroup_id": gce.task_group_id,
         "tasks": [{"id": uuid.uuid4()} for _ in range(num_tasks)],
@@ -297,6 +339,7 @@ def test_reload_tasks_some_completed(gc_executor, mocker, num_tasks):
 
     mock_log = mocker.patch(f"{_MOCK_BASE}log")
 
+    gce.task_group_id = str(uuid.uuid4())
     mock_data = {
         "taskgroup_id": gce.task_group_id,
         "tasks": [{"id": uuid.uuid4()} for _ in range(num_tasks)],
@@ -336,6 +379,7 @@ def test_reload_tasks_all_completed(gc_executor):
     serialize = ComputeSerializer().serialize
     num_tasks = 5
 
+    gce.task_group_id = str(uuid.uuid4())
     mock_data = {
         "taskgroup_id": gce.task_group_id,
         "tasks": [
@@ -367,6 +411,7 @@ def test_reload_starts_new_watcher(gc_executor):
 
     num_tasks = 3
 
+    gce.task_group_id = str(uuid.uuid4())
     mock_data = {
         "taskgroup_id": gce.task_group_id,
         "tasks": [{"id": uuid.uuid4()} for _ in range(num_tasks)],
@@ -393,6 +438,8 @@ def test_reload_starts_new_watcher(gc_executor):
 def test_reload_tasks_cancels_existing_futures(gc_executor, randomstring):
     gcc, gce = gc_executor
 
+    gce.task_group_id = str(uuid.uuid4())
+
     def mock_data():
         return {
             "taskgroup_id": gce.task_group_id,
@@ -413,6 +460,7 @@ def test_reload_tasks_cancels_existing_futures(gc_executor, randomstring):
 def test_reload_client_taskgroup_tasks_fails_gracefully(gc_executor):
     gcc, gce = gc_executor
 
+    gce.task_group_id = str(uuid.uuid4())
     mock_datum = (
         (KeyError, {"mispeleed": gce.task_group_id}),
         (ValueError, {"taskgroup_id": "abcd"}),
@@ -431,6 +479,7 @@ def test_reload_client_taskgroup_tasks_fails_gracefully(gc_executor):
 def test_reload_sets_failed_tasks(gc_executor):
     gcc, gce = gc_executor
 
+    gce.task_group_id = str(uuid.uuid4())
     mock_data = {
         "taskgroup_id": gce.task_group_id,
         "tasks": [
@@ -455,6 +504,7 @@ def test_reload_handles_deseralization_error_gracefully(gc_executor):
     gcc, gce = gc_executor
     gcc.fx_serializer = ComputeSerializer()
 
+    gce.task_group_id = str(uuid.uuid4())
     mock_data = {
         "taskgroup_id": gce.task_group_id,
         "tasks": [
@@ -479,19 +529,26 @@ def test_reload_handles_deseralization_error_gracefully(gc_executor):
 def test_task_submitter_respects_batch_size(gc_executor, batch_size: int):
     gcc, gce = gc_executor
 
-    gcc.create_batch.side_effect = mock.MagicMock
-    gcc.register_function.return_value = "abc"
+    # make a new MagicMock every time create_batch is called
+    gcc.create_batch.side_effect = lambda *_args, **_kwargs: mock.MagicMock()
+
+    gcc.register_function.return_value = uuid.uuid4()
     num_batches = 50
 
-    gce.endpoint_id = "some_ep_id"
+    gce.endpoint_id = uuid.uuid4()
     gce.batch_size = batch_size
     for _ in range(num_batches * batch_size):
         gce.submit(noop)
+
+    # force the batches to be populated by flushing the queues. more consistent than
+    # waiting for the queues to flush themselves automatically due to slowdowns
+    # introduced by `coverage`.
     gce.shutdown(cancel_futures=True)
 
+    assert gcc.batch_run.call_count >= num_batches
     for args, _kwargs in gcc.batch_run.call_args_list:
-        batch, *_ = args
-        assert batch.add.call_count <= batch_size
+        *_, batch = args
+        assert 0 < batch.add.call_count <= batch_size
 
 
 def test_task_submitter_stops_executor_on_exception():
@@ -507,9 +564,13 @@ def test_task_submitter_stops_executor_on_upstream_error_response(randomstring):
 
     upstream_error = Exception(f"Upstream error {randomstring}!!")
     gce.funcx_client.batch_run.side_effect = upstream_error
-    gce.task_group_id = "abc"
-    tsi = TaskSubmissionInfo(
-        task_num=12345, function_id="abc", endpoint_id="abc", args=(), kwargs={}
+    gce.task_group_id = uuid.uuid4()
+    tsi = _TaskSubmissionInfo(
+        task_num=12345,
+        function_id=uuid.uuid4(),
+        endpoint_id=uuid.uuid4(),
+        args=(),
+        kwargs={},
     )
     gce._tasks_to_send.put((ComputeFuture(), tsi))
 
@@ -519,10 +580,16 @@ def test_task_submitter_stops_executor_on_upstream_error_response(randomstring):
 
 def test_task_submitter_handles_stale_result_watcher_gracefully(gc_executor, mocker):
     gcc, gce = gc_executor
-    gce.endpoint_id = "blah"
+    gcc.register_function.return_value = uuid.uuid4()
+    gce.endpoint_id = uuid.uuid4()
 
+    fn_id = str(uuid.uuid4())
+    gce._function_registry[gce._fn_cache_key(noop)] = fn_id
     task_id = str(uuid.uuid4())
-    gcc.batch_run.return_value = [task_id]
+    gcc.batch_run.return_value = {
+        "tasks": {fn_id: [task_id]},
+        "task_group_id": str(uuid.uuid4()),
+    }
     gce.submit(noop)
     try_assert(lambda: bool(gce._result_watcher), "Test prerequisite")
     try_assert(lambda: bool(gce._result_watcher._open_futures), "Test prerequisite")
@@ -539,12 +606,44 @@ def test_task_submitter_sets_future_task_ids(gc_executor):
 
     num_tasks = random.randint(2, 20)
     futs = [ComputeFuture() for _ in range(num_tasks)]
+    tasks = [
+        mock.MagicMock(function_uuid="fn_id", args=[], kwargs={})
+        for _ in range(num_tasks)
+    ]
     batch_ids = [uuid.uuid4() for _ in range(num_tasks)]
 
-    gcc.batch_run.return_value = batch_ids
-    gce._submit_tasks(futs, [])
+    gcc.batch_run.return_value = {
+        "request_id": "rq_id",
+        "task_group_id": "tg_id",
+        "endpoint_id": "ep_id",
+        "tasks": {"fn_id": batch_ids},
+    }
+    gce._submit_tasks("ep_id", futs, tasks)
 
     assert all(f.task_id == task_id for f, task_id in zip(futs, batch_ids))
+
+
+@pytest.mark.parametrize("batch_response", [{"tasks": "foo"}, {"task_group_id": "foo"}])
+def test_submit_tasks_stops_futures_on_bad_response(
+    gc_executor, batch_response, caplog
+):
+    gcc, gce = gc_executor
+
+    gcc.batch_run.return_value = batch_response
+
+    num_tasks = random.randint(2, 20)
+    futs = [ComputeFuture() for _ in range(num_tasks)]
+    tasks = [
+        mock.MagicMock(function_uuid="fn_id", args=[], kwargs={})
+        for _ in range(num_tasks)
+    ]
+
+    with pytest.raises(Exception) as e:
+        gce._submit_tasks("ep_id", futs, tasks)
+
+    assert "missing an expected field" in caplog.text
+    for fut in futs:
+        assert fut.exception() == e.value
 
 
 def test_resultwatcher_stops_if_unable_to_connect(mocker):

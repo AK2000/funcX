@@ -6,11 +6,40 @@ import pytest
 from globus_compute_sdk import ContainerSpec
 from globus_compute_sdk.errors import TaskExecutionFailed
 from globus_compute_sdk.serialize import ComputeSerializer
+from globus_compute_sdk.serialize.concretes import SELECTABLE_STRATEGIES
 
 
 @pytest.fixture(autouse=True)
 def _clear_sdk_env(monkeypatch):
     monkeypatch.delenv("FUNCX_SDK_ENVIRONMENT", raising=False)
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"foo": "bar"},
+        {"environment": "dev", "fx_authorizer": "blah"},
+        {"asynchronous": True},
+    ],
+)
+def test_client_warns_on_unknown_kwargs(kwargs):
+    known_kwargs = [
+        "funcx_home",
+        "environment",
+        "funcx_service_address",
+        "do_version_check",
+        "code_serialization_strategy",
+        "data_serialization_strategy",
+        "login_manager",
+    ]
+    unknown_kwargs = [k for k in kwargs if k not in known_kwargs]
+
+    with pytest.warns(UserWarning) as warnings:
+        _ = gc.Client(do_version_check=False, login_manager=mock.Mock(), **kwargs)
+
+    assert len(warnings) == len(unknown_kwargs)
+    for warning in warnings:
+        assert any(k in str(warning.message) for k in unknown_kwargs)
 
 
 @pytest.mark.parametrize("env", [None, "local", "dev", "production"])
@@ -54,16 +83,6 @@ def test_client_init_sets_addresses_by_env(
 
     # finally, confirm that the address was set correctly
     assert client.funcx_service_address == web_uri
-
-
-def test_client_init_accepts_specified_taskgroup():
-    tg_uuid = uuid.uuid4()
-    gcc = gc.Client(
-        task_group_id=tg_uuid,
-        do_version_check=False,
-        login_manager=mock.Mock(),
-    )
-    assert gcc.session_task_group_id == str(tg_uuid)
 
 
 @pytest.mark.parametrize(
@@ -139,118 +158,51 @@ def test_pending_tasks_always_fetched():
             assert sf == args[0]
 
 
-@pytest.mark.parametrize("create_ws_queue", [True, False, None])
-def test_batch_created_websocket_queue(create_ws_queue):
+@pytest.mark.parametrize("create_result_queue", [True, False, None])
+def test_batch_created_websocket_queue(create_result_queue):
     eid = str(uuid.uuid4())
     fid = str(uuid.uuid4())
 
     gcc = gc.Client(do_version_check=False, login_manager=mock.Mock())
     gcc.web_client = mock.MagicMock()
-    if create_ws_queue is None:
+    if create_result_queue is None:
         batch = gcc.create_batch()
     else:
-        batch = gcc.create_batch(create_websocket_queue=create_ws_queue)
+        batch = gcc.create_batch(create_websocket_queue=create_result_queue)
 
-    batch.add(fid, eid, (1,))
-    batch.add(fid, eid, (2,))
+    batch.add(fid, (1,))
+    batch.add(fid, (2,))
 
-    gcc.batch_run(batch)
+    gcc.batch_run(eid, batch)
 
     assert gcc.web_client.submit.called
-    submit_data = gcc.web_client.submit.call_args[0][0]
-    assert "create_websocket_queue" in submit_data
-    if create_ws_queue:
-        assert submit_data["create_websocket_queue"] is True
-    else:
-        assert submit_data["create_websocket_queue"] is False
+    *_, submit_data = gcc.web_client.submit.call_args[0]
+    assert "create_queue" in submit_data
+    assert submit_data["create_queue"] is bool(create_result_queue)
 
 
-def test_batch_error():
-    gcc = gc.Client(do_version_check=False, login_manager=mock.Mock())
-    gcc.web_client = mock.MagicMock()
+@pytest.mark.parametrize(
+    "strategy", [s for s in SELECTABLE_STRATEGIES if not s._for_code]
+)
+def test_batch_respects_serialization_strategy(strategy):
+    gcc = gc.Client(
+        data_serialization_strategy=strategy(),
+        do_version_check=False,
+        login_manager=mock.Mock(),
+    )
 
-    error_reason = "reason 1 2 3"
-    error_results = {
-        "response": "batch",
-        "results": [
-            {
-                "http_status_code": 200,
-                "status": "Success",
-                "task_uuid": "abc",
-            },
-            {
-                "http_status_code": 400,
-                "status": "Failed",
-                "task_uuid": "def",
-                "reason": error_reason,
-            },
-        ],
-        "task_group_id": "tg_id",
-    }
-    gcc.web_client.submit = mock.MagicMock(return_value=error_results)
+    fn_id = str(uuid.uuid4())
+    args = (1, 2, 3)
+    kwargs = {"a": "b", "c": "d"}
 
     batch = gcc.create_batch()
-    batch.add("fid1", "eid1", "arg1")
-    batch.add("fid2", "eid2", "arg2")
-    with pytest.raises(TaskExecutionFailed) as excinfo:
-        gcc.batch_run(batch)
+    batch.add(fn_id, args, kwargs)
+    tasks = batch.prepare()["tasks"]
 
-    assert error_reason in str(excinfo)
+    ser = ComputeSerializer(strategy_data=strategy())
+    expected = {fn_id: [ser.pack_buffers([ser.serialize(args), ser.serialize(kwargs)])]}
 
-
-def test_batch_no_reason():
-    gcc = gc.Client(do_version_check=False, login_manager=mock.Mock())
-    gcc.web_client = mock.MagicMock()
-
-    error_results = {
-        "response": "batch",
-        "results": [
-            {
-                "http_status_code": 500,
-                "status": "Failed",
-                "task_uuid": "def",
-            },
-        ],
-        "task_group_id": "tg_id",
-    }
-    gcc.web_client.submit = mock.MagicMock(return_value=error_results)
-
-    with pytest.raises(TaskExecutionFailed) as excinfo:
-        gcc.run(endpoint_id="fid", function_id="fid")
-
-    assert "Unknown execution failure" in str(excinfo)
-
-
-@pytest.mark.parametrize("asynchronous", [True, False, None])
-def test_single_run_websocket_queue_depend_async(asynchronous):
-    if asynchronous is None:
-        gcc = gc.Client(do_version_check=False, login_manager=mock.Mock())
-    else:
-        gcc = gc.Client(
-            asynchronous=asynchronous, do_version_check=False, login_manager=mock.Mock()
-        )
-
-    gcc.web_client = mock.MagicMock()
-
-    fake_results = {
-        "results": [
-            {
-                "task_uuid": str(uuid.uuid4()),
-                "http_status_code": 200,
-            }
-        ],
-        "task_group_id": str(uuid.uuid4()),
-    }
-    gcc.web_client.submit = mock.MagicMock(return_value=fake_results)
-    gcc.run(endpoint_id=str(uuid.uuid4()), function_id=str(uuid.uuid4()))
-
-    assert gcc.web_client.submit.called
-    submit_data = gcc.web_client.submit.call_args[0][0]
-    assert "create_websocket_queue" in submit_data
-    if asynchronous:
-        assert submit_data["create_websocket_queue"] is True
-    else:
-        assert submit_data["create_websocket_queue"] is False
+    assert tasks == expected
 
 
 def test_build_container(mocker, login_manager):

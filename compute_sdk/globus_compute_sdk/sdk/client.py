@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
 import os
@@ -13,13 +12,8 @@ from globus_compute_sdk.errors import (
     TaskExecutionFailed,
     TaskPending,
 )
-from globus_compute_sdk.sdk._environments import (
-    get_web_service_url,
-    get_web_socket_url,
-    urls_might_mismatch,
-)
-from globus_compute_sdk.sdk.asynchronous.compute_task import ComputeTask
-from globus_compute_sdk.sdk.asynchronous.ws_polling_task import WebSocketPollingTask
+from globus_compute_sdk.sdk._environments import get_web_service_url
+from globus_compute_sdk.sdk.utils.uuid_like import UUID_LIKE_T
 from globus_compute_sdk.sdk.web_client import FunctionRegistrationData
 from globus_compute_sdk.serialize import ComputeSerializer, SerializationStrategy
 from globus_compute_sdk.version import __version__, compare_versions
@@ -28,8 +22,6 @@ from .batch import Batch
 from .login_manager import LoginManager, LoginManagerProtocol, requires_login
 
 logger = logging.getLogger(__name__)
-
-_FUNCX_HOME = os.path.join("~", ".globus_compute")
 
 
 class Client:
@@ -49,18 +41,11 @@ class Client:
     def __init__(
         self,
         http_timeout=None,
-        funcx_home=_FUNCX_HOME,
-        asynchronous: bool | None = None,
-        loop=None,
+        funcx_home=None,
         environment: str | None = None,
-        funcx_service_address: str | None = None,
-        results_ws_uri: str | None = None,
-        warn_about_url_mismatch: bool | None = None,
         task_group_id: t.Union[None, uuid.UUID, str] = None,
+        funcx_service_address: str | None = None,
         do_version_check: bool = True,
-        openid_authorizer: t.Any = None,
-        search_authorizer: t.Any = None,
-        fx_authorizer: t.Any = None,
         *,
         code_serialization_strategy: SerializationStrategy | None = None,
         data_serialization_strategy: SerializationStrategy | None = None,
@@ -76,52 +61,30 @@ class Client:
             Timeout for any call to service in seconds.
             Default is no timeout
 
+            DEPRECATED - see self.web_client
+
+        funcx_home: any
+            DEPRECATED - was never used
+
         environment: str
             For internal use only. The name of the environment to use. Sets
-            funcx_service_address and results_ws_uri unless they are already passed in.
-
-        funcx_service_address: str
-            For internal use only. The address of the web service.
-
-        results_ws_uri: str
-            For internal use only. The address of the websocket service.
-
-            DEPRECATED - use Executor instead.
-
-        warn_about_url_mismatch: bool
-            For internal use only. If true, a warning is logged if funcx_service_address
-            and results_ws_uri appear to point to different environments.
-
-            DEPRECATED - use Executor instead.
-
-        do_version_check: bool
-            Set to ``False`` to skip the version compatibility check on client
-            initialization
-            Default: True
-
-        asynchronous: bool
-            Should the API use asynchronous interactions with the web service?
-            Currently only impacts the run method.
-
-            DEPRECATED - this was an early attempt at asynchronous result gathering.
-                Use the Executor instead.
-
-            Default: False
-
-        loop: AbstractEventLoop
-            If asynchronous mode is requested, then you can provide an optional
-            event loop instance. If None, then we will access asyncio.get_event_loop()
-
-            DEPRECATED - part of an early attempt at asynchronous result gathering.
-                Use the Executor instead.
-
-            Default: None
+            funcx_service_address appropriately, unless already set.
 
         task_group_id: str|uuid.UUID
             Set the TaskGroup ID (a UUID) for this Client instance.
             Typically, one uses this to submit new tasks to an existing
             session or to reestablish Executor futures.
             Default: None (will be auto generated)
+
+            DEPRECATED - use create_batch or the executor instead
+
+        funcx_service_address: str
+            For internal use only. The address of the web service.
+
+        do_version_check: bool
+            Set to ``False`` to skip the version compatibility check on client
+            initialization
+            Default: True
 
         code_serialization_strategy: SerializationStrategy
             Strategy to use when serializing function code. If None,
@@ -131,27 +94,14 @@ class Client:
             Strategy to use when serializing function arguments. If None,
             globus_compute_sdk.serialize.DEFAULT_STRATEGY_DATA will be used.
 
-        Keyword arguments are the same as for BaseClient.
-
+        login_manager: LoginManagerProtocol
+            Allows login logic to be overridden for specific use cases. If None, a
+            LoginManager will be used.
         """
-        # resolve URLs if not set
-        if funcx_service_address is None:
-            funcx_service_address = get_web_service_url(environment)
-
-        self._task_status_table: t.Dict[str, t.Dict] = {}
-        self.funcx_home = os.path.expanduser(funcx_home)
-        self.session_task_group_id = (
-            task_group_id and str(task_group_id) or str(uuid.uuid4())
-        )
-
         for arg, name in [
-            (openid_authorizer, "openid_authorizer"),
-            (fx_authorizer, "fx_authorizer"),
-            (search_authorizer, "search_authorizer"),
-            (asynchronous, "asynchronous"),
-            (loop, "loop"),
-            (results_ws_uri, "results_ws_uri"),
-            (warn_about_url_mismatch, "warn_about_url_mismatch"),
+            (http_timeout, "http_timeout"),
+            (funcx_home, "funcx_home"),
+            (task_group_id, "task_group_id"),
         ]:
             if arg is not None:
                 msg = (
@@ -159,6 +109,18 @@ class Client:
                     "It will be removed in a future release."
                 )
                 warnings.warn(msg)
+
+        for arg_name in kwargs:
+            msg = (
+                f"The '{arg_name}' argument is unrecognized. "
+                "(It might have been removed in a previous release.)"
+            )
+            warnings.warn(msg)
+
+        if funcx_service_address is None:
+            funcx_service_address = get_web_service_url(environment)
+
+        self._task_status_table: dict[str, dict] = {}
 
         # if a login manager was passed, no login flow is triggered
         if login_manager is not None:
@@ -181,35 +143,6 @@ class Client:
 
         if do_version_check:
             self.version_check()
-
-        self.results_ws_uri = None
-        self.asynchronous = asynchronous or False
-        if asynchronous:
-            self.loop = loop if loop else asyncio.get_event_loop()
-
-            if results_ws_uri is None:
-                results_ws_uri = get_web_socket_url(environment)
-            self.results_ws_uri = results_ws_uri
-
-            if warn_about_url_mismatch and urls_might_mismatch(
-                funcx_service_address, results_ws_uri
-            ):  # noqa
-                logger.warning(
-                    f"funcx_service_address={funcx_service_address} and "
-                    f"results_ws_uri={results_ws_uri} "
-                    "look like they might point to different environments.  "
-                    "Double check that they are the correct URLs."
-                )
-
-            # Start up an asynchronous polling loop in the background
-            self.ws_polling_task = WebSocketPollingTask(
-                self,
-                self.loop,
-                init_task_group_id=self.session_task_group_id,
-                results_ws_uri=self.results_ws_uri,
-            )
-        else:
-            self.loop = None
 
     def version_check(self, endpoint_version: str | None = None) -> None:
         """Check this client version meets the service's minimum supported version.
@@ -361,7 +294,9 @@ class Client:
         return results
 
     @requires_login
-    def run(self, *args, endpoint_id=None, function_id=None, **kwargs) -> str:
+    def run(
+        self, *args, endpoint_id: UUID_LIKE_T, function_id: UUID_LIKE_T, **kwargs
+    ) -> str:
         """Initiate an invocation
 
         Parameters
@@ -372,39 +307,37 @@ class Client:
             Endpoint UUID string. Required
         function_id : uuid str
             Function UUID string. Required
-        asynchronous : bool
-            Whether or not to run the function asynchronously
 
         Returns
         -------
         task_id : str
-        UUID string that identifies the task if asynchronous is False
-
-        Globus Compute Task: asyncio.Task
-        A future that will eventually resolve into the function's result if
-        asynchronous is True
+        UUID string that identifies the task
         """
-        assert endpoint_id is not None, "endpoint_id key-word argument must be set"
-        assert function_id is not None, "function_id key-word argument must be set"
+        batch = self.create_batch()
+        batch.add(function_id, args, kwargs)
+        r = self.batch_run(endpoint_id, batch)
 
-        batch = self.create_batch(create_websocket_queue=self.asynchronous)
-        batch.add(function_id, endpoint_id, args, kwargs)
-        r = self.batch_run(batch)
+        return r["tasks"][function_id][0]
 
-        return r[0]
-
-    def create_batch(self, task_group_id=None, create_websocket_queue=False) -> Batch:
+    def create_batch(
+        self,
+        task_group_id: UUID_LIKE_T | None = None,
+        create_websocket_queue: bool = False,
+    ) -> Batch:
         """
         Create a Batch instance to handle batch submission in Globus Compute
 
         Parameters
         ----------
 
-        task_group_id : str
-            Override the session wide session_task_group_id with a different
-            task_group_id for this batch.
-            If task_group_id is not specified, it will default to using the client's
-            session_task_group_id
+        endpoint_id : UUID-like
+            ID of the endpoint where the tasks in this batch will be executed
+
+        task_group_id : UUID-like (optional)
+            Associate this batch with a pre-existing Task Group. If there is no Task
+            Group associated with the given ID, or the user is not authorized to use
+            it, the services will respond with an error.
+            If task_group_id is not specified, the services will create a Task Group.
 
         create_websocket_queue : bool
             Whether to create a websocket queue for the task_group_id if
@@ -413,66 +346,37 @@ class Client:
         Returns
         -------
         Batch instance
-            Status block containing "status" key.
         """
-        if not task_group_id:
-            task_group_id = self.session_task_group_id
-
         return Batch(
-            task_group_id=task_group_id, create_websocket_queue=create_websocket_queue
+            task_group_id,
+            create_websocket_queue,
+            serializer=self.fx_serializer,
         )
 
     @requires_login
-    def batch_run(self, batch) -> t.List[str]:
-        """Initiate a batch of tasks to Globus Compute
+    def batch_run(
+        self, endpoint_id: UUID_LIKE_T, batch: Batch
+    ) -> dict[str, str | list[str]]:
+        """
+        Initiate a batch of tasks to Globus Compute
 
-        Parameters
-        ----------
-        batch: a Batch object
+        :param endpoint_id: The endpoint identifier to which to send the batch
+        :param batch: a Batch object
 
         Returns
         -------
-        task_ids : a list of UUID strings that identify the tasks
+        dictionary with the following keys:
+            tasks: a mapping of function IDs to lists of task IDs
+            request_id: arbitrary unique string the web-service assigns this request
+                (only intended for help with support requests)
+            task_group_id: the task group identifier associated with the submitted tasks
+            endpoint_id: the endpoint the tasks were submitted to
         """
-        assert isinstance(batch, Batch), "Requires a Batch object as input"
-        assert len(batch.tasks) > 0, "Requires a non-empty batch"
-
-        data = batch.prepare()
+        if not batch:
+            raise ValueError("No tasks specified for batch run")
 
         # Send the data to Globus Compute
-        r = self.web_client.submit(data)
-
-        task_uuids: t.List[str] = []
-        for result in r["results"]:
-            task_id = result["task_uuid"]
-            task_uuids.append(task_id)
-            if not (200 <= result["http_status_code"] < 300):
-                # this method of handling errors for a batch response is not
-                # ideal, as it will raise any error in the multi-response,
-                # but it will do until batch_run is deprecated in favor of Executer
-                # Note that some errors may already be caught and raised
-                # by globus_compute_sdk.sdk.client.request as GlobusAPIError
-
-                # Checking for 'Failed' is how FuncxResponseError.unpack
-                # originally checked for errors.
-
-                # All errors should have 'reason' but just in case
-                error_reason = result.get("reason", "Unknown execution failure")
-                raise TaskExecutionFailed(error_reason)
-
-        if self.asynchronous:
-            task_group_id = r["task_group_id"]
-            asyncio_tasks = []
-            for task_id in task_uuids:
-                funcx_task = ComputeTask(task_id)
-                asyncio_task = self.loop.create_task(funcx_task.get_result())
-                asyncio_tasks.append(asyncio_task)
-
-                self.ws_polling_task.add_task(funcx_task)
-            self.ws_polling_task.put_task_group_id(task_group_id)
-            return asyncio_tasks
-
-        return task_uuids
+        return self.web_client.submit(endpoint_id, batch.prepare()).data
 
     @requires_login
     def register_endpoint(

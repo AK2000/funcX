@@ -265,7 +265,7 @@ class EndpointInterchange:
         self._quiesce_event.set()
 
     def cleanup(self):
-        self.executor.shutdown()
+        self.executor.shutdown(block=True)
         if self.monitoring:
             log.info("Sending final monitoring message")
             self.time_completed = datetime.datetime.now()
