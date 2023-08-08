@@ -147,7 +147,8 @@ class WebClient(globus_sdk.BaseClient):
     def submit(
         self, endpoint_id: UUID_LIKE_T, batch: t.Dict[str, t.Any]
     ) -> globus_sdk.GlobusHTTPResponse:
-        return self.post(f"/v3/endpoints/{endpoint_id}/submit", data=batch)
+        batch["endpoint_id"] = str(endpoint_id)
+        return self.post(f"/v3/submit", data=batch)
 
     def register_endpoint(
         self,
