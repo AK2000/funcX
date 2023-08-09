@@ -169,6 +169,10 @@ class GlobusComputeEngineBase(ABC):
         """Subclass should use the internal execution system to implement this"""
         raise NotImplementedError()
 
+    @abstractmethod
+    def shutdown(block=False):
+        raise NotImplementedError()
+
     def submit(self, task_id: uuid.UUID, packed_task: bytes) -> Future:
         """GC Endpoints should submit tasks via this method so that tasks are
         tracked properly.

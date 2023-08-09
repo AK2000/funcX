@@ -118,6 +118,6 @@ class ThreadPoolEngine(GlobusComputeEngineBase):
     def status(self) -> dict:
         return {}
 
-    def shutdown(self):
+    def shutdown(self, block=False):
         self._status_report_thread.stop()
         self.executor.shutdown()
