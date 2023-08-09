@@ -180,6 +180,7 @@ def monitor(pid: int,
     import logging
     import platform
     import psutil
+    import performance_features
 
     from parsl.utils import setproctitle
 
