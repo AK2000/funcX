@@ -222,7 +222,7 @@ def monitor(pid: int,
     def accumulate_and_prepare() -> Dict[str, Any]:
         d = {"psutil_process_" + str(k): v for k, v in pm.as_dict().items() if k in simple}
         event_counters = profiler.read_events()
-        profiler.reset_events()
+        # profiler.reset_events()
         event_counters = profiler._Profiler__format_data([event_counters,])
 
         d["run_id"] = run_id
