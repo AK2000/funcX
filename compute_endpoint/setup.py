@@ -33,7 +33,7 @@ REQUIRES = [
     # 'parsl' is a core requirement of the globus-compute-endpoint, essential to a range
     # of different features and functions
     # pin exact versions because it does not use semver
-    "parsl @ git+https://github.com/AK2000/parsl@power-monitoring",
+    "parsl[monitoring] @ git+https://github.com/AK2000/parsl@power-monitoring",
     "pika>=1.2.0",
     "setproctitle>=1.3.2,<1.4",
     "pyyaml>=6.0,<7.0",
