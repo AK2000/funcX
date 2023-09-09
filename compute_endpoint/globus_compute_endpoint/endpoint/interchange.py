@@ -155,6 +155,8 @@ class EndpointInterchange:
             self.timing_record_lock : Lock = Lock()
             self.timing_records : dict[str, TimingRecord] = dict()
             self.task_state_counts : dict[States, int] = defaultdict(int)
+        else:
+            self.run_id = None
 
     def _init_monitoring(self):
         #self.monitoring.logdir = self.logdir
