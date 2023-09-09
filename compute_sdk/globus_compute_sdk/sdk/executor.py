@@ -107,8 +107,6 @@ class Executor(concurrent.futures.Executor):
         funcx_client: Client | None = None,
         task_group_id: UUID_LIKE_T | None = None,
         monitoring: bool = False,
-        monitor_resources: bool = False,
-        resource_monitoring_interval: float = 5,
         label: str = "",
         batch_size: int = 128,
         **kwargs,
@@ -173,8 +171,6 @@ class Executor(concurrent.futures.Executor):
         _REGISTERED_FXEXECUTORS[id(self)] = self
 
         self.monitoring = monitoring
-        self.monitor_resources = monitor_resources
-        self.resource_monitoring_interval = resource_monitoring_interval
 
     def __repr__(self) -> str:
         name = self.__class__.__name__
@@ -296,7 +292,7 @@ class Executor(concurrent.futures.Executor):
         log.debug("Function not registered. Registering: %s", fn)
 
         if self.monitoring:
-            fn = monitor_wrapper(fn, self.monitor_resources, self.resource_monitoring_interval)
+            fn = monitor_wrapper(fn)
 
         func_register_kwargs.pop("function", None)  # just to be sure
         reg_kwargs = {"function_name": fn.__name__, "container_uuid": self.container_id}

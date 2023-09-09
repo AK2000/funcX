@@ -16,10 +16,7 @@ from typing import Any, Callable, Dict, List, Sequence, Tuple
 logger = logging.getLogger(__name__)
 
 
-def monitor_wrapper(f: Any,           # per app
-                    monitor_resources: bool,  # per executor
-                    sleep_dur: float  # per executor
-                    ) -> Callable:
+def monitor_wrapper(f: Any) -> Callable:
 
     """Wrap the Parsl app with a function that will call the monitor function and point it at the correct pid when the task begins.
     """
