@@ -5,10 +5,6 @@ import datetime
 from functools import wraps
 import inspect
 
-from parsl.multiprocessing import ForkProcess
-from multiprocessing import Event, Barrier
-from parsl.process_loggers import wrap_with_logs
-
 from parsl.monitoring.message_type import MessageType
 from parsl.monitoring.radios import MonitoringRadio, UDPRadio, HTEXRadio, FilesystemRadio
 from typing import Any, Callable, Dict, List, Sequence, Tuple
@@ -36,7 +32,6 @@ def monitor_wrapper(f: Any) -> Callable:
 
         task_id = _globus_compute_task_id
         try_id = 0
-        terminate_event = Event()
         # Send first message to monitoring router
         send_first_message(try_id,
                             task_id,
@@ -56,7 +51,6 @@ def monitor_wrapper(f: Any) -> Callable:
     return wrapped
 
 
-@wrap_with_logs
 def send_first_message(try_id: int,
                        task_id: int,
                        monitoring_hub_url: str,
@@ -65,7 +59,6 @@ def send_first_message(try_id: int,
                             radio_mode, run_dir, False)
 
 
-@wrap_with_logs
 def send_last_message(try_id: int,
                       task_id: int,
                       monitoring_hub_url: str,
@@ -106,5 +99,10 @@ def send_first_last_message(try_id: int,
             'timestamp': datetime.datetime.now(),
             'pid': os.getpid()
     })
+    if not is_last:
+        msg[1]["task_try_time_running"] = msg[1]["timestamp"]
+    else:
+        msg[1]["task_try_time_running_ended"] = msg[1]["timestamp"]
+        
     radio.send(msg)
     return
