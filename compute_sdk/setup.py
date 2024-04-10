@@ -23,6 +23,7 @@ REQUIRES = [
     "pika>=1.2",
     "tblib==1.7.0",
     "texttable>=1.6.7",
+    "parsl @ git+https://github.com/AK2000/parsl@monitoring_kafka_v1"
 ]
 DOCS_REQUIRES = [
     "sphinx<5",
