@@ -6,7 +6,7 @@ from setuptools import find_packages, setup
 REQUIRES = [
     "requests>=2.20.0,<3",
     "globus-sdk",  # version will be bounded by `globus-compute-sdk`
-    "globus-compute-sdk==2.2.4",
+    "globus-compute-sdk @ git+https://github.com/AK2000/funcX@power_monitoring_new#subdirectory=compute_sdk",
     "globus-compute-common==0.2.0",
     # table printing used in list-endpoints
     "texttable>=1.6.4,<2",
@@ -33,7 +33,7 @@ REQUIRES = [
     # 'parsl' is a core requirement of the globus-compute-endpoint, essential to a range
     # of different features and functions
     # pin exact versions because it does not use semver
-    "parsl[monitoring] @ git+https://github.com/AK2000/parsl@power-monitoring",
+    "parsl[monitoring] @ git+https://github.com/AK2000/parsl@monitoring_kafka_v1",
     "pika>=1.2.0",
     "setproctitle>=1.3.2,<1.4",
     "pyyaml>=6.0,<7.0",
